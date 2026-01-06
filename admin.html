@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="es" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bandeja de Reportes (Admin)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { box-sizing: border-box; }
+    .toast { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+
+<body class="h-full">
+  <div id="app-wrapper" class="w-full h-full overflow-auto bg-gradient-to-br from-slate-50 to-indigo-100">
+    <div class="min-h-full py-8 px-4 sm:px-6 lg:px-8">
+      <div class="max-w-6xl mx-auto">
+
+        <!-- Header -->
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Bandeja de reportes</h1>
+            <p class="text-gray-600 mt-1">Revisa, filtra y exporta los reportes enviados por los empleados.</p>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <a href="./form.html"
+               class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-white border border-gray-200 shadow-sm hover:bg-gray-50 text-gray-900 font-semibold">
+              Abrir formulario
+            </a>
+            <button id="export-csv"
+                    class="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm">
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+
+        <!-- "Login" simple (NO es seguridad real; solo disuasión) -->
+        <div id="gate" class="bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-gray-900">Acceso</h2>
+              <p class="text-sm text-gray-600">Ingresa la clave para ver la bandeja.</p>
+            </div>
+            <div class="flex gap-2 items-center">
+              <input id="gate-pass" type="password" class="w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                     placeholder="Clave" />
+              <button id="gate-btn" class="px-4 py-2 rounded-lg bg-gray-900 hover:bg-black text-white font-semibold">
+                Entrar
+              </button>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mt-3">
+            Nota: este bloqueo es solo del lado del navegador. Para seguridad real, publica <code>admin.html</code> detrás de un login (intranet/SSO/Cloudflare Access/Vercel password).
+          </p>
+        </div>
+
+        <!-- Toast -->
+        <div id="toast" class="hidden fixed top-4 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 toast">
+          <span id="toast-message"></span>
+        </div>
+
+        <!-- Controles -->
+        <div id="controls" class="hidden bg-white rounded-xl shadow-lg p-6 mb-6">
+          <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+            <div class="md:col-span-4">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Buscar</label>
+              <input id="q" type="text"
+                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                     placeholder="Nombre, descripción, equipo, sucursal..." />
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Sucursal</label>
+              <select id="f-sucursal"
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <option value="">Todas</option>
+              </select>
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Departamento</label>
+              <select id="f-depto"
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <option value="">Todos</option>
+              </select>
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="block text-sm font-medium text-gray-700 mb-1">Tipo falla</label>
+              <select id="f-falla"
+                      class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                <option value="">Todos</option>
+              </select>
+            </div>
+
+            <div class="md:col-span-2 flex items-end gap-2">
+              <button id="clear"
+                      class="w-full px-4 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold">
+                Limpiar
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 gap-2">
+            <div class="text-sm text-gray-600">
+              <span class="font-semibold text-gray-900" id="count">0</span> reportes visibles
+              <span class="text-gray-400">·</span>
+              <span id="last-sync">sin datos</span>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-gray-700">Orden</label>
+              <select id="sort"
+                      class="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm">
+                <option value="newest">Más recientes</option>
+                <option value="oldest">Más antiguos</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabla -->
+        <div id="inbox" class="hidden bg-white rounded-xl shadow-lg overflow-hidden">
+          <div class="overflow-auto">
+            <table class="min-w-full text-sm">
+              <thead class="bg-gray-50 text-left text-gray-700">
+                <tr>
+                  <th class="py-3 px-4">Fecha</th>
+                  <th class="py-3 px-4">Nombre</th>
+                  <th class="py-3 px-4">Sucursal</th>
+                  <th class="py-3 px-4">Departamento</th>
+                  <th class="py-3 px-4">Equipo</th>
+                  <th class="py-3 px-4">Falla</th>
+                  <th class="py-3 px-4">Descripción</th>
+                  <th class="py-3 px-4">Captura</th>
+                </tr>
+              </thead>
+              <tbody id="tbody" class="text-gray-800"></tbody>
+            </table>
+          </div>
+
+          <div id="empty" class="p-6 text-gray-600 hidden">Aún no hay reportes.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ⚠️ IMPORTANTE: Cambia esta clave antes de publicar
+  const ADMIN_PASS = "admin2025";
+
+  let reports = [];
+
+  const els = {
+    gate: document.getElementById("gate"),
+    gatePass: document.getElementById("gate-pass"),
+    gateBtn: document.getElementById("gate-btn"),
+    controls: document.getElementById("controls"),
+    inbox: document.getElementById("inbox"),
+    tbody: document.getElementById("tbody"),
+    empty: document.getElementById("empty"),
+    toast: document.getElementById("toast"),
+    toastMsg: document.getElementById("toast-message"),
+    exportBtn: document.getElementById("export-csv"),
+    q: document.getElementById("q"),
+    fSucursal: document.getElementById("f-sucursal"),
+    fDepto: document.getElementById("f-depto"),
+    fFalla: document.getElementById("f-falla"),
+    clear: document.getElementById("clear"),
+    count: document.getElementById("count"),
+    lastSync: document.getElementById("last-sync"),
+    sort: document.getElementById("sort")
+  };
+
+  function showToast(message, isError = false) {
+    els.toastMsg.textContent = message;
+    els.toast.classList.remove("hidden");
+    els.toast.classList.toggle("bg-red-500", isError);
+    els.toast.classList.toggle("bg-green-500", !isError);
+    setTimeout(() => els.toast.classList.add("hidden"), 3000);
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function fmtSucursal(r) {
+    if (r?.sucursal === "Otro" && r?.sucursal_otra) return r.sucursal_otra;
+    return r?.sucursal || "";
+  }
+
+  function normalizeForSearch(r) {
+    const parts = [
+      r?.nombre, fmtSucursal(r), r?.departamento, r?.area_usuario, r?.tipo_equipo, r?.tipo_falla, r?.descripcion_falla
+    ];
+    return parts.filter(Boolean).join(" ").toLowerCase();
+  }
+
+  function uniqueSorted(arr) {
+    return [...new Set(arr.filter(Boolean).map(String))].sort((a,b) => a.localeCompare(b));
+  }
+
+  function rebuildFilters() {
+    const sucursales = uniqueSorted(reports.map(r => fmtSucursal(r)));
+    const deptos = uniqueSorted(reports.map(r => r?.departamento));
+    const fallas = uniqueSorted(reports.map(r => r?.tipo_falla));
+
+    fillSelect(els.fSucursal, ["", ...sucursales], "Todas");
+    fillSelect(els.fDepto, ["", ...deptos], "Todos");
+    fillSelect(els.fFalla, ["", ...fallas], "Todos");
+  }
+
+  function fillSelect(select, values, placeholderLabel) {
+    const current = select.value;
+    select.innerHTML = "";
+    values.forEach((v, idx) => {
+      const opt = document.createElement("option");
+      opt.value = v;
+      opt.textContent = (idx === 0 ? placeholderLabel : v);
+      select.appendChild(opt);
+    });
+    if ([...select.options].some(o => o.value === current)) select.value = current;
+  }
+
+  function applyFilters() {
+    const q = els.q.value.trim().toLowerCase();
+    const suc = els.fSucursal.value;
+    const dep = els.fDepto.value;
+    const falla = els.fFalla.value;
+
+    let rows = [...reports];
+
+    if (suc) rows = rows.filter(r => fmtSucursal(r) === suc);
+    if (dep) rows = rows.filter(r => String(r?.departamento ?? "") === dep);
+    if (falla) rows = rows.filter(r => String(r?.tipo_falla ?? "") === falla);
+    if (q) rows = rows.filter(r => normalizeForSearch(r).includes(q));
+
+    rows.sort((a, b) => {
+      const da = String(a?.fecha_creacion || a?.fecha_hora || "");
+      const db = String(b?.fecha_creacion || b?.fecha_hora || "");
+      return els.sort.value === "oldest"
+        ? da.localeCompare(db)
+        : db.localeCompare(da);
+    });
+
+    renderRows(rows);
+  }
+
+  function renderRows(rows) {
+    els.count.textContent = String(rows.length);
+
+    if (rows.length === 0) {
+      els.tbody.innerHTML = "";
+      els.empty.classList.remove("hidden");
+      return;
+    }
+
+    els.empty.classList.add("hidden");
+    els.tbody.innerHTML = rows.slice(0, 500).map(r => {
+      const fecha = escapeHtml(r?.fecha_hora || r?.fecha_creacion || "");
+      const nombre = escapeHtml(r?.nombre || "");
+      const suc = escapeHtml(fmtSucursal(r));
+      const dep = escapeHtml(r?.departamento || "");
+      const eq = escapeHtml(r?.tipo_equipo || "");
+      const falla = escapeHtml(r?.tipo_falla || "");
+      const desc = escapeHtml(r?.descripcion_falla || "");
+      const cap = r?.captura_agregada ? "Sí" : "No";
+
+      return `
+        <tr class="border-t border-gray-200 align-top hover:bg-gray-50">
+          <td class="py-3 px-4 whitespace-nowrap">${fecha}</td>
+          <td class="py-3 px-4 whitespace-nowrap">${nombre}</td>
+          <td class="py-3 px-4 whitespace-nowrap">${suc}</td>
+          <td class="py-3 px-4 whitespace-nowrap">${dep}</td>
+          <td class="py-3 px-4 whitespace-nowrap">${eq}</td>
+          <td class="py-3 px-4 whitespace-nowrap">${falla}</td>
+          <td class="py-3 px-4 min-w-[24rem]">${desc}</td>
+          <td class="py-3 px-4 whitespace-nowrap">${cap}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  function exportCsv() {
+    if (!reports.length) {
+      showToast("No hay datos para exportar.", true);
+      return;
+    }
+
+    const headers = [
+      "fecha_creacion",
+      "fecha_hora",
+      "nombre",
+      "sucursal",
+      "sucursal_otra",
+      "departamento",
+      "area_usuario",
+      "tipo_equipo",
+      "tipo_falla",
+      "descripcion_falla",
+      "captura_agregada"
+    ];
+
+    const rows = [headers, ...reports.map(r => headers.map(h => (r?.[h] ?? "")))];
+    const csv = rows.map(row =>
+      row.map(v => `"${String(v).replaceAll('"', '""')}"`).join(",")
+    ).join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "reportes_fallas.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("CSV descargado.");
+  }
+
+  async function loadReports() {
+    try {
+      const response = await fetch('/api/reports');
+      if (response.ok) {
+        reports = await response.json();
+        els.lastSync.textContent = `actualizado: ${new Date().toLocaleString()}`;
+        rebuildFilters();
+        applyFilters();
+      } else {
+        showToast("Error al cargar los reportes.", true);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      showToast("Error al conectar con el servidor.", true);
+    }
+  }
+
+  // Eventos UI
+  ["input", "change"].forEach(evt => {
+    els.q.addEventListener(evt, applyFilters);
+    els.fSucursal.addEventListener(evt, applyFilters);
+    els.fDepto.addEventListener(evt, applyFilters);
+    els.fFalla.addEventListener(evt, applyFilters);
+    els.sort.addEventListener(evt, applyFilters);
+  });
+
+  els.clear.addEventListener("click", () => {
+    els.q.value = "";
+    els.fSucursal.value = "";
+    els.fDepto.value = "";
+    els.fFalla.value = "";
+    applyFilters();
+  });
+
+  els.exportBtn.addEventListener("click", exportCsv);
+
+  // Gate (disuasión)
+  function unlock() {
+    els.gate.classList.add("hidden");
+    els.controls.classList.remove("hidden");
+    els.inbox.classList.remove("hidden");
+    showToast("Acceso concedido.");
+    loadReports();
+  }
+
+  function checkGate() {
+    if (sessionStorage.getItem("admin_ok") === "1") unlock();
+  }
+
+  els.gateBtn.addEventListener("click", () => {
+    if (els.gatePass.value === ADMIN_PASS) {
+      sessionStorage.setItem("admin_ok", "1");
+      unlock();
+    } else {
+      showToast("Clave incorrecta.", true);
+    }
+  });
+
+  els.gatePass.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") els.gateBtn.click();
+  });
+
+  checkGate();
+</script>
+
+</body>
+</html>
